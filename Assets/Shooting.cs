@@ -3,21 +3,40 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 
+using UnityStandardAssets.Characters.FirstPerson;
+
 public class Shooting : NetworkBehaviour {
 
+    [SerializeField] GameObject shot;
     Camera cam;
-
-	[SyncVar]int health = 5;
+    FirstPersonController movement;
+    [SyncVar]bool dead = false;
 
     // Use this for initialization
     void Awake () {
         cam = GetComponentInChildren<Camera>();
+        movement = GetComponent<FirstPersonController>();
     }
 	
 	// Update is called once per frame
 	void Update () {
-		if(Input.GetButtonDown("Fire1")){
+		if(Input.GetButtonDown("Fire1") && !dead){
             CmdShoot();
+        }
+        if(dead && cam.transform.position.y != -0.7f){
+            cam.transform.localPosition = Vector3.MoveTowards(
+                cam.transform.localPosition,
+                Vector3.up * -0.7f, Time.deltaTime * 2);
+        }
+        if(!dead && cam.transform.position.y != 0.8f){
+            cam.transform.localPosition = Vector3.MoveTowards(
+                cam.transform.localPosition,
+                Vector3.up * 0.8f, Time.deltaTime * 2);
+        }
+
+        //Debug
+        if(Input.GetKeyDown(KeyCode.K) && !dead){
+            CmdGetShot();
         }
 	}
 
@@ -43,15 +62,25 @@ public class Shooting : NetworkBehaviour {
 
 	[ClientRpc]
 	public void RpcShoot(Vector3 start, Vector3 end){
-		Debug.DrawLine(start, end, Color.red, 1, true);
+		Instantiate(shot).GetComponent<RailgunShot>().Setup(start, end);
     }
 	[Command]
     public void CmdGetShot(){
-        health--;
+        dead = true;
         RpcGetShot();
+        StartCoroutine(CmdRevive(3));
     }
 	[ClientRpc]
 	public void RpcGetShot(){
-        print("I got shot");
+        movement.enabled = false;
+        StartCoroutine(ClientRevive(3));
+    }
+    IEnumerator CmdRevive(float delay){
+        yield return new WaitForSeconds(delay);
+        dead = false;
+    }
+    IEnumerator ClientRevive(float delay){
+        yield return new WaitForSeconds(delay);
+        movement.enabled = true;
     }
 }
