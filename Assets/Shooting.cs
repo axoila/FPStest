@@ -28,7 +28,7 @@ public class Shooting : NetworkBehaviour {
 	// Update is called once per frame
 	void Update () {
 		if(Input.GetButtonDown("Fire1") && !dead && isLocalPlayer){
-            CmdShoot();
+            LocalShoot();
         }
         if(dead && cam.transform.position.y != cameraHeightRange.x){
             cam.transform.localPosition = Vector3.MoveTowards(
@@ -46,38 +46,47 @@ public class Shooting : NetworkBehaviour {
             CmdGetShot();
         }
 	}
-
-	[Command]
-    public void CmdShoot()
-    {
-        if(!canShoot) return;
+    [Client]
+    void LocalShoot(){
+        if (!canShoot) return;
         RaycastHit hit;
         Ray ray = cam.ViewportPointToRay(cam.rect.size * 0.5f);
         if (Physics.Raycast(ray, out hit, railgunRange))
         {
-            RpcShoot(ray.origin, hit.point);
+            Instantiate(shot).GetComponent<RailgunShot>().Setup(ray.origin, hit.point);
             Shooting enemyShot = hit.collider.GetComponent<Shooting>();
-            if (enemyShot)
-            {  
-                if(enemyShot != this)
-                    enemyShot.CmdGetShot();
-            } else {
-                Rigidbody rigid = hit.collider.GetComponent<Rigidbody>();
-                if (rigid)
-                    rigid.AddForce(ray.direction * impactForce, ForceMode.VelocityChange);
-            }
+            Rigidbody rigid = hit.collider.GetComponent<Rigidbody>();
+            CmdShoot(ray.origin, hit.point, enemyShot||rigid?hit.collider.gameObject:null);
         }
         else
         {
-            RpcShoot(ray.origin, ray.origin + ray.direction * railgunRange);
+            Instantiate(shot).GetComponent<RailgunShot>().Setup(ray.origin, ray.origin + ray.direction * railgunRange);
+            CmdShoot(ray.origin, ray.origin + ray.direction * railgunRange, null);
         }
         canShoot = false;
         StartCoroutine(ReactivateShot(fireDelay));
     }
 
+	[Command]
+    public void CmdShoot(Vector3 start, Vector3 end, GameObject victim)
+    {
+        if(victim){
+            Shooting enemyShot = victim.GetComponent<Shooting>();
+            if (enemyShot)
+            {
+                enemyShot.CmdGetShot();
+            } else {
+                Rigidbody rb = victim.GetComponent<Rigidbody>();
+                rb.AddForce((end-start).normalized * impactForce, ForceMode.VelocityChange);
+            }
+        }
+        RpcShoot(start, end);
+    }
+
 	[ClientRpc]
 	public void RpcShoot(Vector3 start, Vector3 end){
-		Instantiate(shot).GetComponent<RailgunShot>().Setup(start, end);
+        if(!isLocalPlayer)
+		    Instantiate(shot).GetComponent<RailgunShot>().Setup(start, end);
     }
 	[Command]
     public void CmdGetShot(){
